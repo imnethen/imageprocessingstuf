@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 glam = "0.30.3"
+rand = "0.9.1"
+stacker = "0.1.21"
 
 [dependencies.image]
 version = "0.25.2"

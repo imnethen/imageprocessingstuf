@@ -35,12 +35,11 @@ pub fn gaussian_blur(
     }
 }
 
-pub fn gaussian_threshold(t: f32, phi: f32) -> impl Fn(&Vec<Vec<Vec3>>, usize, usize) -> Vec3 {
+fn gaussian_threshold(t: f32, phi: f32) -> impl Fn(&Vec<Vec<Vec3>>, usize, usize) -> Vec3 {
     move |img: &Vec<Vec<Vec3>>, i: usize, j: usize| {
         img[i][j].map(|c| {
             if c < t {
                 1. + f32::tanh(phi * (c - t))
-                // quantize_color(8, Vec3::splat(c / t)).x
             } else {
                 1.
             }
@@ -65,6 +64,32 @@ pub fn dog1(img: &Vec<Vec<Vec3>>) -> Vec<Vec<Vec3>> {
     new_img = apply_effect(|im, i, j| im[i][j] * 2.0 - 1., &new_img);
 
     new_img = apply_effect(|im, i, j| im[i][j] * orig[i][j], &new_img);
+
+    new_img
+}
+
+pub fn dog2(threshold: f32, img: &Vec<Vec<Vec3>>) -> Vec<Vec<Vec3>> {
+    use util::apply_effect;
+
+    let mut blurred_1 = apply_effect(gaussian_blur(5, 2., false), &img);
+    blurred_1 = apply_effect(gaussian_blur(5, 2., true), &blurred_1);
+
+    let mut blurred_2 = apply_effect(gaussian_blur(5, 3.2, false), &img);
+    blurred_2 = apply_effect(gaussian_blur(5, 3.2, true), &blurred_2);
+
+    let mut new_img = img.clone();
+    new_img = apply_effect(|_, i, j| blurred_1[i][j] - blurred_2[i][j], &new_img);
+    new_img = apply_effect(|im, i, j| im[i][j].map(|c| f32::clamp(c, 0., 1.)), &new_img);
+    new_img = apply_effect(
+        |im, i, j| {
+            if im[i][j].x < threshold {
+                Vec3::splat(0.)
+            } else {
+                Vec3::splat(1.)
+            }
+        },
+        &new_img,
+    );
 
     new_img
 }
