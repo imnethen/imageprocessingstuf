@@ -2,7 +2,7 @@ use crate::{dither, util};
 use glam::Vec3;
 use util::{apply_effect, sample};
 
-// img should be luminance
+/// img should be luminance
 #[rustfmt::skip]
 fn sobel(img: &Vec<Vec<Vec3>>, i: usize, j: usize) -> Vec3 {
     let i = i as isize; let j = j as isize;
@@ -72,7 +72,7 @@ fn floodfill<T: std::cmp::PartialEq + Copy>(
     }
 
     img[i as usize][j as usize] = new_val;
-    stacker::maybe_grow(1024, 1024 * 1024, || {
+    stacker::maybe_grow(32 * 1024, 1024 * 1024, || {
         floodfill(img, i - 1, j, old_val, new_val);
         floodfill(img, i + 1, j, old_val, new_val);
         floodfill(img, i, j - 1, old_val, new_val);
@@ -106,22 +106,77 @@ fn make_direction_or_offset_matrix<T: Fn() -> u32>(
     dirmat
 }
 
-pub fn line_dither(num_colors: u32, mat_size: u32, img: &Vec<Vec<Vec3>>) -> Vec<Vec<Vec3>> {
-    let mut new_img = img.clone();
-    new_img = apply_effect(|im, i, j| Vec3::splat(util::luminance(im[i][j])), &new_img);
+/// (i - j) % m, needed to not overflow i - j into negatives
+fn submod(i: usize, j: usize, m: usize) -> usize {
+    let s = (i as isize - j as isize) % m as isize;
+    if s >= 0 {
+        s as usize
+    } else {
+        (s + m as isize) as usize
+    }
+}
+
+fn make_dithering_matrices(size: usize) -> (Vec<Vec<f32>>, Vec<Vec<f32>>) {
+    let mut line_order = (0..size).collect::<Vec<_>>();
+
+    use rand::seq::SliceRandom;
+    line_order.shuffle(&mut rand::rng());
+
+    let mut ditmat1 = vec![vec![0.; size]; size];
+    let mut ditmat2 = vec![vec![0.; size]; size];
+
+    for i in 0..size {
+        for j in 0..size {
+            ditmat1[i][j] =
+                (line_order[(i + j) % size] * size + i) as f32 / (size * size) as f32 - 0.5;
+            ditmat2[i][j] =
+                (line_order[submod(i, j, size)] * size + i) as f32 / (size * size) as f32 - 0.5;
+        }
+    }
+
+    (ditmat1, ditmat2)
+}
+
+pub fn line_dither(
+    num_colors: u32,
+    mat_size: usize,
+    dog: &Vec<Vec<Vec3>>,
+    orig: &Vec<Vec<Vec3>>,
+) -> Vec<Vec<Vec3>> {
+    let mut new_img = dog.clone();
+
     new_img = edge_detect(&new_img);
 
-    let dirmat = make_direction_or_offset_matrix(&new_img, || rand::random_bool(0.5) as u32);
-    let offmat =
+    let direction_matrix =
+        make_direction_or_offset_matrix(&new_img, || rand::random_bool(0.5) as u32);
+    let offset_matrix =
         make_direction_or_offset_matrix(&new_img, || rand::random_range(0..mat_size) as u32);
-    new_img = offmat
-        .iter()
-        .map(|line| {
-            line.iter()
-                .map(|&clr| Vec3::splat(clr as f32 / mat_size as f32))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
+
+    let (dithering_matrix1, dithering_matrix2) = make_dithering_matrices(mat_size);
+
+    for i in 0..dog.len() {
+        for j in 0..dog[i].len() {
+            new_img[i][j] = match direction_matrix[i][j] {
+                1 | 2 => dither::dither_color(
+                    num_colors,
+                    1.,
+                    &dithering_matrix1,
+                    orig[i][j],
+                    i,
+                    j + offset_matrix[i][j] as usize,
+                ),
+                3 => dither::dither_color(
+                    num_colors,
+                    1.,
+                    &dithering_matrix2,
+                    orig[i][j],
+                    i,
+                    j + offset_matrix[i][j] as usize,
+                ),
+                _ => unreachable!(),
+            };
+        }
+    }
 
     new_img
 }
