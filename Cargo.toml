@@ -1,0 +1,12 @@
+[package]
+name = "postprocess"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+glam = "0.30.3"
+
+[dependencies.image]
+version = "0.25.2"
+default-features = false
+features = ["png", "jpeg"]
