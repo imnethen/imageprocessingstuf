@@ -103,6 +103,13 @@ fn make_direction_or_offset_matrix<T: Fn() -> u32>(
         }
     }
 
+    // now floodfill the edges
+    for i in 0..img.len() {
+        for j in 0..img[i].len() {
+            floodfill(&mut dirmat, i as isize, j as isize, 1, gen_number() + 2);
+        }
+    }
+
     dirmat
 }
 
@@ -140,12 +147,10 @@ fn make_dithering_matrices(size: usize) -> (Vec<Vec<f32>>, Vec<Vec<f32>>) {
 pub fn line_dither(
     num_colors: u32,
     mat_size: usize,
-    dog: &Vec<Vec<Vec3>>,
+    edges: &Vec<Vec<Vec3>>,
     orig: &Vec<Vec<Vec3>>,
 ) -> Vec<Vec<Vec3>> {
-    let mut new_img = dog.clone();
-
-    new_img = edge_detect(&new_img);
+    let mut new_img = edges.clone();
 
     let direction_matrix =
         make_direction_or_offset_matrix(&new_img, || rand::random_bool(0.5) as u32);
@@ -154,10 +159,11 @@ pub fn line_dither(
 
     let (dithering_matrix1, dithering_matrix2) = make_dithering_matrices(mat_size);
 
-    for i in 0..dog.len() {
-        for j in 0..dog[i].len() {
+    for i in 0..new_img.len() {
+        for j in 0..new_img[i].len() {
             new_img[i][j] = match direction_matrix[i][j] {
-                1 | 2 => dither::dither_color(
+                1 => unreachable!(),
+                2 => dither::dither_color(
                     num_colors,
                     1.,
                     &dithering_matrix1,
